@@ -1,0 +1,31 @@
+{
+	"Database": {
+		"inventory_service" : {
+			"master" : {
+				"hostname":"mysql-master.internal.zopnow.com",
+				"username":"root",
+				"password":"root"
+			},
+			"slave": {
+				"hostname":"mysql-slave.internal.zopnow.com",
+				"username":"root",
+				"password":"root"
+			}
+		},
+		"something_else":  {
+			"master" : {
+				"hostname":"mysql-master.internal.zopnow.com",
+				"username":"root",
+				"password":"root"
+			},
+			"slave": {
+				"hostname":"mysql-master.internal.zopnow.com",
+				"username":"root",
+				"password":"root"
+			}
+		}
+	},
+	"CallService": {
+		"account-service":"http://account-service"
+	}
+}
