@@ -1,11 +1,11 @@
 package main
 
 import (
-	"net/http"
 	"log"
+	"net/http"
 
-	"../go-zopsmart/db"
 	"../go-zopsmart/appError"
+	"../go-zopsmart/db"
 	"../go-zopsmart/server"
 	"../go-zopsmart/utility"
 	"./controller"
@@ -19,11 +19,12 @@ func init() {
 var config = &configuration{}
 
 type handler string
+
 var controllerHandler handler
 
 type configuration struct {
-	Database  db.MysqlConfig   `json:"Database"`
-	CallService  appUtility.Config
+	Database    db.MysqlConfig `json:"Database"`
+	CallService appUtility.Config
 }
 
 func main() {
@@ -38,6 +39,6 @@ func main() {
 }
 
 func (h handler) GetResponse(function string, r *http.Request) (response interface{}, err appError.AppError) {
-	response, err = controller.CallFunctionByName(function,r)
+	response, err = controller.CallFunctionByName(function, r)
 	return
 }
