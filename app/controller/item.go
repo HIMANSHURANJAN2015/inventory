@@ -24,6 +24,7 @@ var (
 	extensions                          map[string]bool
 	isMultiStoreExtensionEnabled        = false
 	isInStoreProcessingExtensionEnabled = false
+	stockStrategy                       string
 )
 
 type ItemGetListResponse struct {
@@ -128,9 +129,6 @@ func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruc
 		orgData := appUtil.GetOrganizationData(organizationId)
 		currency = model.Currency(orgData.Currency)
 	}
-	//config := appUtil.GetOrganizationConfig(organizationId)
-	//stockStrategy := config["stockStrategy"]
-	//taxExclusivePrice := config["taxExclusivePrice"]
 	storeSpecificProperty := item.StoreSpecificProperty
 	for i, storeData := range storeSpecificProperty {
 		storeId := storeData.StoreId
@@ -155,6 +153,7 @@ func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruc
 	return item
 }
 
+// This needs to be called for each request
 func initializeOrganizationData(organizationId int) {
 	// Fetching organization level data at once
 	storeMap = make(map[int]model.Store)
@@ -162,6 +161,9 @@ func initializeOrganizationData(organizationId int) {
 	currency = model.Currency{}
 	isMultiStoreExtensionEnabled = appUtil.IsExtensionEnabled(organizationId, appUtil.MULTI_STORE_EXTENSION)
 	isInStoreProcessingExtensionEnabled = appUtil.IsExtensionEnabled(organizationId, appUtil.IN_STORE_PROCESSING_EXTENSION)
+	config := appUtil.GetOrganizationConfig(organizationId)
+	stockStrategy = config["stockStrategy"]
+	//taxExclusivePrice := config["taxExclusivePrice"]
 }
 
 func ItemPost(r *http.Request) (interface{}, appError.AppError) {
