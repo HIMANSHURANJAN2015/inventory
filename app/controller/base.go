@@ -24,10 +24,7 @@ var (
 )
 
 func CallFunctionByName(name string, r *http.Request) (interface{}, appError.AppError) {
-	organizationId := getOrganizationId(r)
-	if organizationId != 0 {
-		initializeOrganizationData(organizationId)
-	}
+	initializeOrganizationData(r)
 	var res interface{}
 	var err appError.AppError
 	switch name {
@@ -42,7 +39,11 @@ func CallFunctionByName(name string, r *http.Request) (interface{}, appError.App
 }
 
 // Request Level Caching. This needs to be updated for each request.
-func initializeOrganizationData(organizationId int) {
+func initializeOrganizationData(r *http.Request) {
+	organizationId := getOrganizationId(r)
+	if organizationId == 0 {
+		return
+	}
 	// Fetching organization level data at once
 	orgData := appUtil.GetOrganizationData(organizationId)
 	currency = model.Currency(orgData.Currency)
@@ -67,7 +68,7 @@ func getOrganizationId(r *http.Request) (organizationId int) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&request)
 	if err != nil {
-		panic(appError.NewValidationError("Incorrect Request"))
+		panic(appError.NewValidationError("Organization Id must be integer"))
 	}
 	organizationId = request.OrganizationId
 	return
