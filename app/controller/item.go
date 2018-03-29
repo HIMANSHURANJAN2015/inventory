@@ -5,27 +5,12 @@ import (
 	"../../go-zopsmart/server"
 	"../model"
 	appUtil "../utility"
-	"log"
 	"net/http"
 )
 
 func init() {
-	log.Println("init called of item package")
+	appError.Debug("init called of item package")
 }
-
-const (
-	MAX_PER_PAGE int = 20
-)
-
-// Request level Caching. Initialize this global for each request.
-var (
-	storeMap                            map[int]model.Store
-	currency                            model.Currency
-	extensions                          map[string]bool
-	isMultiStoreExtensionEnabled        = false
-	isInStoreProcessingExtensionEnabled = false
-	stockStrategy                       string
-)
 
 type ItemGetListResponse struct {
 	Code   int             `json:"code"`
@@ -47,23 +32,6 @@ type ItemGetDetailsResponse struct {
 	Data   map[string]model.ItemStruct `json:"data"`
 }
 
-type ItemPostRequest struct {
-	ClientItemId   int `json:"clientItemId"`
-	OrganizationId int `json:"organizationId"`
-}
-
-type storeDataRequest struct {
-	StoreId      int     //optional
-	SellingPrice float64 // optional
-	Mrp          float64
-	Discount     float64
-	Tax          string // We will convert it later, as ot can be ["CGST":12, "SGST" :1]  or 12
-	Barcodes     []string
-	Rack         string
-	Shelf        string
-	Aisle        string
-}
-
 func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 	mandatoryFields := map[string][]string{
 		"organizationId": []string{server.Int},
@@ -80,7 +48,6 @@ func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 	var organizationId, id, page, storeId int
 	var clientItemIds []int
 	organizationId = data.IntegerParams["organizationId"]
-	initializeOrganizationData(organizationId)
 	id = data.IntegerParams["id"]
 	page = data.IntegerParams["page"]
 	storeId = data.IntegerParams["storeId"]
@@ -123,16 +90,9 @@ func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 }
 
 func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruct {
-	//storeMap := make(map[int]model.Store)
-
-	if currency.Id == 0 {
-		orgData := appUtil.GetOrganizationData(organizationId)
-		currency = model.Currency(orgData.Currency)
-	}
 	storeSpecificProperty := item.StoreSpecificProperty
 	for i, storeData := range storeSpecificProperty {
 		storeId := storeData.StoreId
-		log.Println("StoreId", storeId)
 		k, ok := storeMap[storeId]
 		if !ok {
 			storeInfo := appUtil.GetStoreData(organizationId, storeId)
@@ -151,19 +111,6 @@ func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruc
 	}
 	item.StoreSpecificProperty = storeSpecificProperty
 	return item
-}
-
-// This needs to be called for each request
-func initializeOrganizationData(organizationId int) {
-	// Fetching organization level data at once
-	storeMap = make(map[int]model.Store)
-	extensions = make(map[string]bool)
-	currency = model.Currency{}
-	isMultiStoreExtensionEnabled = appUtil.IsExtensionEnabled(organizationId, appUtil.MULTI_STORE_EXTENSION)
-	isInStoreProcessingExtensionEnabled = appUtil.IsExtensionEnabled(organizationId, appUtil.IN_STORE_PROCESSING_EXTENSION)
-	config := appUtil.GetOrganizationConfig(organizationId)
-	stockStrategy = config["stockStrategy"]
-	//taxExclusivePrice := config["taxExclusivePrice"]
 }
 
 func ItemPost(r *http.Request) (interface{}, appError.AppError) {

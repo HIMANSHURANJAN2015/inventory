@@ -1,24 +1,24 @@
 package server
 
 import (
-	"net/http"
-	"strings"
-	"strconv"
 	"../appError"
 	"../utility"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 const (
-	Int = "integer"
-	Float = "float"
-	Bool = "bool"
+	Int      = "integer"
+	Float    = "float"
+	Bool     = "bool"
 	IntArray = "intarray"
 )
 
 type ParsedParams struct {
-	IntegerParams map[string]int
-	FloatParams map[string]float64
-	BoolParams map[string]bool
+	IntegerParams      map[string]int
+	FloatParams        map[string]float64
+	BoolParams         map[string]bool
 	IntegerArrayParams map[string][]int
 }
 
@@ -29,8 +29,7 @@ func GetURIParts(r *http.Request) []string {
 	return strings.Split(uriParts[0], "/")
 }
 
-
-func fetchId(r *http.Request) (int) {
+func fetchId(r *http.Request) int {
 	parts := GetURIParts(r)
 	if len(parts) > 2 {
 		id := parts[2]
@@ -44,12 +43,13 @@ func fetchId(r *http.Request) (int) {
 
 /*
 1. If mandatory Paramters are not present and not in correct format then it will give th error
-2. Optional Paramters will be initialized to there empty value, if not present, in each of the "Type maps" to which it belongs. 
+2. Optional Paramters will be initialized to there empty value, if not present, in each of the "Type maps" to which it belongs.
    Hence the key will always be present
 3. If value of a parameter can be multi type, then the parameter key will be present in all the type Maps initialized with
 	empty value. Hower the actual group wil have the actual data passed.
+4. This function is only for GET request, for other methods like POST we need to unmarshal json Body
 */
-func GetRequestParams(r *http.Request, mandatoryFields, optionalFields map[string][]string) (ParsedParams) {
+func GetRequestParams(r *http.Request, mandatoryFields, optionalFields map[string][]string) ParsedParams {
 	r.ParseForm()
 	var parsedParams ParsedParams
 
@@ -61,13 +61,13 @@ func GetRequestParams(r *http.Request, mandatoryFields, optionalFields map[strin
 	for key, keyTypes := range mandatoryFields {
 		valueFromRequest := r.Form[key]
 		if len(valueFromRequest) == 0 {
-			panic(appError.NewValidationError("Missing Required Field : "+key))		
+			panic(appError.NewValidationError("Missing Required Field : " + key))
 		}
-		parseParams(key, valueFromRequest, keyTypes,  integerParams, floatParams, boolParams, integerArrayParams)
+		parseParams(key, valueFromRequest, keyTypes, integerParams, floatParams, boolParams, integerArrayParams)
 	}
 	for key, keyTypes := range optionalFields {
 		valueFromRequest := r.Form[key]
-		parseParams(key, valueFromRequest, keyTypes,  integerParams, floatParams, boolParams, integerArrayParams)
+		parseParams(key, valueFromRequest, keyTypes, integerParams, floatParams, boolParams, integerArrayParams)
 	}
 	// Fetching id from request params
 	integerParams["id"] = fetchId(r)
@@ -82,42 +82,42 @@ func GetRequestParams(r *http.Request, mandatoryFields, optionalFields map[strin
 func parseParams(key string, valueFromRequest []string, keyTypes []string, integerParams map[string]int, floatParams map[string]float64, boolParams map[string]bool, integerArrayParams map[string][]int) {
 	var err error
 	switch {
-		case utility.StringInSlice(Int, keyTypes) && len(valueFromRequest) == 1: // If more than 1 value is there, then it will go to Array
-			val := 0
-			if len(valueFromRequest) == 1 {
-				val, err = strconv.Atoi(valueFromRequest[0])
-				if err != nil {
-					panic(appError.NewValidationError(key+" must be an integer"))
-				}
+	case utility.StringInSlice(Int, keyTypes) && len(valueFromRequest) == 1: // If more than 1 value is there, then it will go to Array
+		val := 0
+		if len(valueFromRequest) == 1 {
+			val, err = strconv.Atoi(valueFromRequest[0])
+			if err != nil {
+				panic(appError.NewValidationError(key + " must be an integer"))
 			}
-			integerParams[key] = val
-		case utility.StringInSlice(Float, keyTypes) && len(valueFromRequest) == 1:
-			var val float64 = 0
-			if len(valueFromRequest) == 1 {
-				val, err = strconv.ParseFloat(valueFromRequest[0], 64)
-				if err != nil {
-					panic(appError.NewValidationError(key+" must be an float"))
-				}
+		}
+		integerParams[key] = val
+	case utility.StringInSlice(Float, keyTypes) && len(valueFromRequest) == 1:
+		var val float64 = 0
+		if len(valueFromRequest) == 1 {
+			val, err = strconv.ParseFloat(valueFromRequest[0], 64)
+			if err != nil {
+				panic(appError.NewValidationError(key + " must be an float"))
 			}
-			floatParams[key] = val
-		case utility.StringInSlice(Bool, keyTypes) && len(valueFromRequest) == 1:
-			val := false
-			if len(valueFromRequest) == 1 { 
-				val, err = strconv.ParseBool(valueFromRequest[0])
-				if err != nil {
-					panic(appError.NewValidationError(key+" must be an boolean"))	
-				}	
-			}	
-			boolParams[key] = val
-		case utility.StringInSlice(IntArray, keyTypes) && len(valueFromRequest) > 1:
-			var temp []int //nil
-			for _,str := range valueFromRequest {
-				val, err := strconv.Atoi(str)
-				if err != nil {
-					panic(appError.NewValidationError(key+" must be an integer"))
-				}
-				temp = append(temp, val)
+		}
+		floatParams[key] = val
+	case utility.StringInSlice(Bool, keyTypes) && len(valueFromRequest) == 1:
+		val := false
+		if len(valueFromRequest) == 1 {
+			val, err = strconv.ParseBool(valueFromRequest[0])
+			if err != nil {
+				panic(appError.NewValidationError(key + " must be an boolean"))
 			}
-			integerArrayParams[key] = temp	
+		}
+		boolParams[key] = val
+	case utility.StringInSlice(IntArray, keyTypes) && len(valueFromRequest) > 1:
+		var temp []int //nil
+		for _, str := range valueFromRequest {
+			val, err := strconv.Atoi(str)
+			if err != nil {
+				panic(appError.NewValidationError(key + " must be an integer"))
+			}
+			temp = append(temp, val)
+		}
+		integerArrayParams[key] = temp
 	}
 }
