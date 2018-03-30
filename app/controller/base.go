@@ -5,7 +5,9 @@ import (
 	"../../go-zopsmart/server"
 	"../model"
 	appUtil "../utility"
+	"bytes"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 )
 
@@ -17,6 +19,7 @@ const (
 var (
 	storeMap                            map[int]model.Store
 	currency                            model.Currency
+	defaultStoreId                      int
 	extensions                          map[string]bool
 	isMultiStoreExtensionEnabled        = false
 	isInStoreProcessingExtensionEnabled = false
@@ -33,7 +36,7 @@ func CallFunctionByName(name string, r *http.Request) (interface{}, appError.App
 	case "ItemPost":
 		res, err = ItemPost(r)
 	default:
-		err = appError.NewValidationError("Method not supported")
+		panic(appError.NewValidationError("Method not supported"))
 	}
 	return res, err
 }
@@ -47,6 +50,7 @@ func initializeOrganizationData(r *http.Request) {
 	// Fetching organization level data at once
 	orgData := appUtil.GetOrganizationData(organizationId)
 	currency = model.Currency(orgData.Currency)
+	defaultStoreId = orgData.DefaultStore.Id
 	storeMap = make(map[int]model.Store)
 	extensions = make(map[string]bool)
 	isMultiStoreExtensionEnabled = appUtil.IsExtensionEnabled(organizationId, appUtil.MULTI_STORE_EXTENSION)
@@ -63,13 +67,16 @@ func getOrganizationId(r *http.Request) (organizationId int) {
 		organizationId, _ = data.IntegerParams["organizationId"]
 		return
 	}
-	// For other methods, we need to read from json Body
+	//For other methods, we need to read from json Body
 	var request = struct{ OrganizationId int }{}
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&request)
+	requestBody, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(requestBody, &request)
 	if err != nil {
+		appError.Debug(err)
 		panic(appError.NewValidationError("Organization Id must be integer"))
 	}
+	// Setting the value back, so that controller read it
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(requestBody))
 	organizationId = request.OrganizationId
 	return
 }

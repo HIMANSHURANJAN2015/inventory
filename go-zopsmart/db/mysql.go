@@ -1,6 +1,7 @@
 package db
 
 import (
+	"../appError"
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -8,9 +9,9 @@ import (
 
 var (
 	configurations MysqlConfig
-	currentDb string
-	Db *sql.DB
-)	
+	currentDb      string
+	Db             *sql.DB
+)
 
 func Configure(c MysqlConfig, dbName string) {
 	configurations = c
@@ -25,9 +26,9 @@ func Connect(dbName string) {
 	var err error
 	dsn := dsn(configurations[currentDb].Master, currentDb)
 	if Db, err = sql.Open("mysql", dsn); err != nil {
-			panic(err)
-			//panic("SQL Driver Error", err)
-			return
+		panic(err)
+		//panic("SQL Driver Error", err)
+		return
 	}
 	// Check if is alive
 	if err = Db.Ping(); err != nil {
@@ -52,27 +53,26 @@ type MysqlConfig map[string]ReplicationConfig
 
 type ReplicationConfig struct {
 	Master Config `json:"master"`
-	Slave Config  `json:"slave"`
+	Slave  Config `json:"slave"`
 }
 
 type Config struct {
-	Username  string
-	Password  string
-	Hostname  string
+	Username string
+	Password string
+	Hostname string
 }
 
-
-// Inserts and returns the return res of type Result 
-func Insert(query string, args ...interface{}) (sql.Result) {
-	res, err:= Db.Exec(query, args...)
+// Inserts and returns the return res of type Result
+func Insert(query string, args ...interface{}) sql.Result {
+	res, err := Db.Exec(query, args...)
 	log.Println(res)
 	log.Println(err)
 	if err != nil {
-		panic(err)
+		log.Println("Insertion Error:", err)
+		panic(appError.NewServerError("Insertion Error"))
 	}
 	return res
 }
-
 
 // errors are deferred until row scan is called
 func Row(query string, args ...interface{}) *sql.Row {
@@ -85,4 +85,12 @@ func Row(query string, args ...interface{}) *sql.Row {
 func Select(query string, args ...interface{}) (*sql.Rows, error) {
 	rows, err := Db.Query(query, args...)
 	return rows, err
+}
+
+func StartTransaction() (*sql.Tx, error) {
+	return Db.Begin()
+}
+
+func Commit() {
+
 }

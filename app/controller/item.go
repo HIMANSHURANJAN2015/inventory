@@ -1,15 +1,17 @@
 package controller
 
 import (
-	"../../go-zopsmart/appError"
+	zError "../../go-zopsmart/appError"
 	"../../go-zopsmart/server"
 	"../model"
 	appUtil "../utility"
+	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
 func init() {
-	appError.Debug("init called of item package")
+	zError.Debug("init called of item package")
 }
 
 type ItemGetListResponse struct {
@@ -32,7 +34,7 @@ type ItemGetDetailsResponse struct {
 	Data   map[string]model.ItemStruct `json:"data"`
 }
 
-func ItemGet(r *http.Request) (interface{}, appError.AppError) {
+func ItemGet(r *http.Request) (response interface{}, appError zError.AppError) {
 	mandatoryFields := map[string][]string{
 		"organizationId": []string{server.Int},
 	}
@@ -44,7 +46,7 @@ func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 	}
 	data := server.GetRequestParams(r, mandatoryFields, optionalFields)
 
-	var response interface{}
+	// clientItemId can be and integer or array of integers
 	var organizationId, id, page, storeId int
 	var clientItemIds []int
 	organizationId = data.IntegerParams["organizationId"]
@@ -58,15 +60,24 @@ func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 		clientItemIds = []int{clientIdInt}
 	}
 	if id != 0 || len(clientItemIds) == 1 {
+		// response will contain only 1 item, uniquely identified by id or clientItemId
 		var item model.ItemStruct
+		var itemPtr *model.ItemStruct
 		if id != 0 {
-			item = model.GetItemById(id, organizationId)
+			itemPtr = model.GetItemById(id, organizationId)
+			if itemPtr == nil {
+				panic(zError.NewModelError(fmt.Sprintf("Item with id %d not found", id)))
+			}
 		} else {
-			item = model.GetItemFromClientId(clientItemIds[0], organizationId)
+			itemPtr = model.GetItemFromClientId(clientItemIds[0], organizationId)
+			if itemPtr == nil {
+				panic(zError.NewModelError(fmt.Sprintf("Item with given client id %d not found", clientItemIds[0])))
+			}
 		}
+		item = *itemPtr
 		itemDetails := model.GetItemDetails(item.Id, storeId)
 		if itemDetails.StoreSpecificProperty == nil {
-			panic(appError.NewModelError("Item details not found in this store"))
+			panic(zError.NewModelError("Item details not found in this store"))
 		}
 		itemDetails = formatItemStruct(organizationId, itemDetails)
 		response = ItemGetDetailsResponse{200, "SUCCESS", map[string]model.ItemStruct{"item": itemDetails}}
@@ -86,7 +97,7 @@ func ItemGet(r *http.Request) (interface{}, appError.AppError) {
 		responseData := ItemGetListData{allItems, offset, MAX_PER_PAGE, len(allItems)}
 		response = ItemGetListResponse{200, "SUCCESS", responseData}
 	}
-	return response, appError.AppError{}
+	return
 }
 
 func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruct {
@@ -99,8 +110,12 @@ func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruc
 			k = model.Store(storeInfo)
 			storeMap[storeId] = k
 		}
-		storeData.Store = &k
-		storeData.Currency = &currency
+		if k.Id != 0 {
+			storeData.Store = &k
+		}
+		if currency.Id != 0 {
+			storeData.Currency = &currency
+		}
 		// Not showing aisle, rack and shelf info
 		if !isInStoreProcessingExtensionEnabled {
 			storeData.Aisle = nil
@@ -113,6 +128,64 @@ func formatItemStruct(organizationId int, item model.ItemStruct) model.ItemStruc
 	return item
 }
 
-func ItemPost(r *http.Request) (interface{}, appError.AppError) {
-	return nil, appError.NewModelError("Item with id 1 not found")
+// StoreData is mandatory
+func ItemPost(r *http.Request) (response interface{}, appError zError.AppError) {
+	// Unable to use ItemStuct of model because, we are reading StoreSpecificData(Request) and returning StoreSpecificProperty(Response)
+	var requestData = struct {
+		ClientItemId      int
+		OrganizationId    int
+		StoreSpecificData []model.StoreData
+	}{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&requestData)
+	if err != nil {
+		zError.Debug("In Item Post controller", err)
+		panic(zError.NewValidationError("Incorrect request format"))
+	}
+	organizationId := requestData.OrganizationId
+	zError.Debug(requestData.StoreSpecificData[0])
+	// Validation of Request
+	switch {
+	case requestData.ClientItemId == 0:
+		panic(zError.NewValidationError("Missing clientItemId"))
+	case requestData.OrganizationId == 0:
+		panic(zError.NewValidationError("Missing organizationId"))
+	case len(requestData.StoreSpecificData) == 0:
+		panic(zError.NewValidationError("Invalid store data"))
+	case (model.GetItemFromClientId(requestData.ClientItemId, organizationId)) != nil:
+		panic(zError.NewValidationError("Item Already Exists with given clientItemId"))
+	}
+	// Fetching all storeIds and caching it
+	allStores := appUtil.GetAllStores(organizationId)
+	for _, storeInfo := range allStores {
+		storeMap[storeInfo.Id] = model.Store(storeInfo)
+	}
+	var storeDataToAdd = make(map[int]model.StoreData)
+	for _, storeInfo := range requestData.StoreSpecificData {
+		if !isMultiStoreExtensionEnabled {
+			// Taking defaultStoreId
+			storeInfo.StoreId = defaultStoreId
+		}
+		_, validStore := storeMap[storeInfo.StoreId]
+		switch {
+		case storeInfo.StoreId == 0:
+			panic(zError.NewValidationError("Store Id cannot be empty"))
+		case !validStore:
+			panic(zError.NewValidationError("Invalid storeId"))
+		case storeInfo.Mrp == 0:
+			panic(zError.NewValidationError("Please pass mrp"))
+		case storeInfo.Mrp < storeInfo.Discount:
+			panic(zError.NewValidationError("Mrp cannot be less than discount"))
+		case storeInfo.Stock < 0:
+			panic(zError.NewValidationError("Stock cannot be negative"))
+		}
+		storeDataToAdd[storeInfo.StoreId] = storeInfo
+	}
+	itemId := model.AddItem(requestData.ClientItemId, organizationId)
+	model.AddStoreData(itemId, storeDataToAdd, nil)
+
+	itemDetails := model.GetItemDetails(itemId, 0)
+	itemDetails = formatItemStruct(organizationId, itemDetails)
+	response = ItemGetDetailsResponse{200, "SUCCESS", map[string]model.ItemStruct{"item": itemDetails}}
+	return
 }

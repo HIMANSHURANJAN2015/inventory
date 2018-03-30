@@ -9,5 +9,5 @@ import (
    In future, this can also be customized based on our requirement eg:- writing to different files for different case.
 */
 func Debug(v ...interface{}) {
-	log.Println(v)
+	log.Println(v...)
 }

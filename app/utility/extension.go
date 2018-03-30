@@ -1,27 +1,27 @@
 package utility
 
 import (
-	"net/http"
-	"log"
-	"io/ioutil"
-	"fmt"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 )
 
 const (
-	MULTI_STORE_EXTENSION = "MultiStoreSupport"
+	MULTI_STORE_EXTENSION         = "MultiStoreSupport"
 	IN_STORE_PROCESSING_EXTENSION = "InStoreProcessing"
 )
-	
+
 type ExtensionResponse struct {
-	Code int
+	Code   int
 	Status string
-	Data map[string]Extension
+	Data   map[string]Extension
 }
 
 type Extension struct {
-	Id int
-	Name string
+	Id     int
+	Name   string
 	Status string
 }
 
@@ -35,7 +35,7 @@ var Urls Config
 
 func IsExtensionEnabled(organizationId int, extensionSlug string) bool {
 	var url = Urls["account-service"]
-	url = url + fmt.Sprintf("/extension?organizationId=%d&slug=%s",organizationId, extensionSlug)
+	url = url + fmt.Sprintf("/extension?organizationId=%d&slug=%s", organizationId, extensionSlug)
 	res, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)

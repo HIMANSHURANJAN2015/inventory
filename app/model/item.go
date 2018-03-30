@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 )
 
 func init() {
@@ -27,11 +28,11 @@ type StoreData struct {
 	Mrp          float64   `json:"mrp"`
 	Discount     float64   `json:"discount"`
 	Stock        int       `json:"stock"` // Will be true,false or integer based on strategy set. But in Db it is saved as int
-	Tax          *string   `json:"tax"`   // Can be [{"CGST":"2"},{"SGST":"2"}]  or 12
+	Tax          *string   `json:"tax"`   // Can be [{"CGST":"2"},{"SGST":"2"}]  or 12. So saving as string and returning string
 	Barcodes     []*string `json:"barcodes"`
 	Store        *Store    `json:"store"`
-	StoreId      int       `json:"-"`        //will become store object later
-	Currency     *Currency `json:"currency"` // will be fetched in future
+	StoreId      int       `json:"storeId"`
+	Currency     *Currency `json:"currency"`
 	Aisle        *string   `json:"aisle"`
 	Rack         *string   `json:"rack"`
 	Shelf        *string   `json:"shelf"`
@@ -52,26 +53,28 @@ type Currency struct {
 	Symbol string `json:"symbol"`
 }
 
-func GetItemById(id int, organizationId int) ItemStruct {
+func GetItemById(id int, organizationId int) *ItemStruct {
 	row := db.Row("select id, client_item_id, organization_id from items where id =? and organization_id = ? and deleted_at is null", id, organizationId)
 	var item ItemStruct
 	err := row.Scan(&item.Id, &item.ClientItemId, &item.OrganizationId)
 	if err != nil {
-		panic(appError.NewModelError(fmt.Sprintf("Item with id %d not found", id)))
+		return nil
+		//panic(appError.NewModelError(fmt.Sprintf("Item with id %d not found", id)))
 	}
-	return item
+	return &item
 }
 
-func GetItemFromClientId(clientItemId, organizationId int) ItemStruct {
+func GetItemFromClientId(clientItemId, organizationId int) *ItemStruct {
 	row := db.Row("select id, client_item_id, organization_id from items where client_item_id =? and organization_id = ? and deleted_at is null", clientItemId, organizationId)
 	var item ItemStruct
 	err := row.Scan(&item.Id, &item.ClientItemId, &item.OrganizationId)
 	if err != nil {
-		panic(appError.NewModelError(fmt.Sprintf("Item with given client id %d not found", clientItemId)))
+		return nil
 	}
-	return item
+	return &item
 }
 
+// storeId is optional
 func GetItemDetails(id int, storeId int) ItemStruct {
 	var temp = make(map[int]StoreData)
 	var item ItemStruct
@@ -101,6 +104,10 @@ func GetItemDetails(id int, storeId int) ItemStruct {
 		err := rows.Scan(&item.Id, &item.ClientItemId, &item.OrganizationId, &data.StoreId, &data.Mrp, &data.Discount, &data.Stock, &data.Aisle, &data.Rack, &data.Shelf, &data.Tax, &barcode)
 		if err != nil {
 			panic(err)
+		}
+		if data.StoreId == 0 {
+			// No Storedata found for this item
+			continue
 		}
 		// Iterating to club Barcodes for each store
 		val, ok := temp[data.StoreId]
@@ -148,4 +155,29 @@ func GetAllItems(clientItemIds []int, organizationId, storeId, maxPerPage, offse
 		}
 	}
 	return items
+}
+
+func AddItem(clientItemId int, organizationId int) (id int) {
+	res := db.Insert("insert into items (client_item_id, organization_id) values (?,?)", clientItemId, organizationId)
+	insertId, _ := res.LastInsertId()
+	id = int(insertId)
+	return
+}
+
+func AddStoreData(itemId int, storeDataToAdd map[int]StoreData, storeDataToUpdate map[int]StoreData) {
+	for storeId, storeData := range storeDataToAdd {
+		res := db.Insert("insert into item_store(item_id, store_id, mrp, discount,stock,aisle,rack,shelf,tax) values (?,?,?,?,?,?,?,?,?)", itemId, storeId, storeData.Mrp, storeData.Discount, storeData.Stock, storeData.Aisle, storeData.Rack, storeData.Shelf, storeData.Tax)
+		insertId, _ := res.LastInsertId()
+		itemStoreId := int(insertId)
+		// Inserting barcodes
+		query := "insert into item_barcodes(item_store_id,barcode) values " // (1,"barcode"),(1."barcode")
+		var barcodes = storeData.Barcodes
+		for _, barcode := range barcodes {
+			query = query + fmt.Sprintf("(%d, '%s'),", itemStoreId, *barcode)
+		}
+		if len(barcodes) > 0 {
+			query = strings.TrimRight(query, ",")
+			res = db.Insert(query)
+		}
+	}
 }

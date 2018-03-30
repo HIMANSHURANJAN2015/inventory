@@ -1,55 +1,71 @@
 package utility
 
 import (
-	"net/http"
-	"log"
-	"io/ioutil"
-	"fmt"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	//"../model" Dont fetch struct from model, or it will cause cyclic import. controller->model->utility->model
 )
 
 type StoreResponse struct {
-	Code int
+	Code   int
 	Status string
-	Data map[string]Store
+	Data   struct {
+		Store Store
+	}
 }
 
 type Store struct {
-	Id int
-	Name string
+	Id            int
+	Name          string
 	ClientStoreId int
-	Latitude string
-	Longitude string
-	Address string
+	Latitude      string
+	Longitude     string
+	Address       string
+}
+
+type StoreListResponse struct {
+	Code   int
+	Status string
+	Data   struct {
+		Store  []Store
+		Offset int
+		Limit  int
+		Count  int
+	}
 }
 
 type OrganizationResponse struct {
-	Code int
+	Code   int
 	Status string
-	Data map[string]Organization
+	Data   map[string]Organization
 }
 
 type Organization struct {
-	Id int
-	Name string
-	Currency Currency
+	Id           int
+	Name         string
+	Currency     Currency
+	DefaultStore struct {
+		Id int
+	}
 }
 
 type Currency struct {
-	Id int
-	Name string
+	Id     int
+	Name   string
 	Symbol string
 }
 
 type ConfigResponse struct {
-	Code int
+	Code   int
 	Status string
-	Data map[string]map[string]map[string]string // data->config->inventory are 3 maps
+	Data   map[string]map[string]map[string]string // data->config->inventory are 3 maps
 }
 
 // In cases of error, it will return empty struct
-func GetStoreData(organizationId, storeId int) (Store) {
+func GetStoreData(organizationId, storeId int) Store {
 	var storeData Store
 	var url = Urls["account-service"]
 	url = url + fmt.Sprintf("/store/%d?organizationId=%d", storeId, organizationId)
@@ -59,12 +75,12 @@ func GetStoreData(organizationId, storeId int) (Store) {
 	if err != nil {
 		log.Println(err)
 	} else {
-		storeData = response.Data["store"]		
+		storeData = response.Data.Store
 	}
 	return storeData
 }
 
-func GetOrganizationData(organizationId int) (Organization){
+func GetOrganizationData(organizationId int) Organization {
 	var organization Organization
 	var url = Urls["account-service"]
 	url = url + fmt.Sprintf("/organization/%d", organizationId)
@@ -74,13 +90,12 @@ func GetOrganizationData(organizationId int) (Organization){
 	if err != nil {
 		log.Println(err)
 	} else {
-		organization = response.Data["organization"]	
+		organization = response.Data["organization"]
 	}
 	return organization
 }
 
-
-func GetOrganizationConfig(organizationId int) (map[string]string) {
+func GetOrganizationConfig(organizationId int) map[string]string {
 	var configs = make(map[string]string)
 	var url = Urls["account-service"]
 	url = url + fmt.Sprintf("/config/inventory?organizationId=%d", organizationId)
@@ -90,24 +105,38 @@ func GetOrganizationConfig(organizationId int) (map[string]string) {
 	if err != nil {
 		log.Println(err)
 	} else {
-		configs =  response.Data["config"]["inventory"] 	
+		configs = response.Data["config"]["inventory"]
 	}
 	return configs
 }
 
-// private
-func getExternalData(url string) ([]byte) {
-	res,err := http.Get(url)
+func GetAllStores(organizationId int) (allStores []Store) {
+	var response StoreListResponse
+	var url = Urls["account-service"]
+	url = url + fmt.Sprintf("/store?organizationId=%d&paginated=false", organizationId)
+	data := getExternalData(url)
+	err := json.Unmarshal(data, &response)
 	if err != nil {
-		log.Println(url, " : ",err)
+		log.Println(err)
+		return
+	}
+	allStores = response.Data.Store
+	return
+}
+
+// private
+func getExternalData(url string) []byte {
+	res, err := http.Get(url)
+	if err != nil {
+		log.Println(url, " : ", err)
 		return nil
 	}
 	if res.StatusCode != 200 {
 		return nil
 	}
-	data,err := ioutil.ReadAll(res.Body)
+	data, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Println(url, " : ",err)
+		log.Println(url, " : ", err)
 		return nil
 	}
 	return data

@@ -1,13 +1,14 @@
 package server
 
 import (
+	"../appError"
+	"../db"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
-	"../appError"
 )
 
 type ControllerHandler interface {
@@ -27,18 +28,24 @@ func StartServer(controllerHandler ControllerHandler) {
 	}
 }
 
-
 func router(controllerHandler ControllerHandler, w http.ResponseWriter, r *http.Request) {
+	tx, dbErr := db.StartTransaction()
+	if dbErr != nil {
+		fmt.Println("Unable to start transaction", dbErr)
+	}
 	defer func() {
 		if r := recover(); r != nil {
+			dbErr = tx.Rollback()
+			log.Println("Error during rollback:", dbErr)
 			fmt.Println("Recovered in Base controller router", r)
 			err, ok := r.(appError.AppError)
 			if ok {
-				WriteError(w, err)			
+				WriteError(w, err)
 			} else {
-				fmt.Println("", err, ok)	
+				fmt.Println("", err, ok)
 			}
 		}
+		tx.Commit()
 	}()
 	httpVerb := r.Method
 	urlParts := GetURIParts(r)
@@ -50,17 +57,16 @@ func router(controllerHandler ControllerHandler, w http.ResponseWriter, r *http.
 		return
 	}
 	functionName := controllerName + strings.Title(strings.ToLower(httpVerb))
-	log.Println("Calling function",functionName)
+	log.Println("Calling function", functionName)
 	// Error/response from controllers/handlers will be retireved here
 	response, appErr := controllerHandler.GetResponse(functionName, r)
 	if appErr.Code != 0 {
-		WriteError(w,appErr)
+		WriteError(w, appErr)
 		return
 	}
 	bytes, err := json.Marshal(response)
-	if (err != nil) {
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	WriteJsonResponse(w, bytes)
 }
-
